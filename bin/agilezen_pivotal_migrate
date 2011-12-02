@@ -1,0 +1,54 @@
+#!/usr/bin/env ruby
+
+begin
+  # Require the preresolved locked set of gems.
+  require File.expand_path('../.bundle/environment', __FILE__)
+rescue LoadError
+  # Fallback on doing the resolve at runtime.
+  require "rubygems"
+  require "bundler"
+
+  Bundler.require(:default)
+end
+
+$LOAD_PATH.unshift File.join(File.dirname(__FILE__), '..', 'lib')
+
+require 'yaml'
+require 'active_support/all'
+require 'agilezen'
+require 'pivotal-tracker'
+
+require 'agilezen_pivotal_migrator'
+
+def load_config(file)
+  if File.file?(file)
+    c = HashWithIndifferentAccess.new(YAML::load_file(file))
+  else
+    raise NotConfiguredError, "No config file found at #{file}"
+  end
+
+  return c
+end
+
+def check_arguments
+  ARGV.any? and display_usage_and_exit
+end
+
+def display_usage
+    puts <<-"END".strip_heredoc
+    Usage: agilezen_pivotal_migrator
+
+    Specify your API Keys and project IDs in config/config.yml.
+  END
+end
+
+def display_usage_and_exit
+  display_usage
+  exit
+end
+
+CONFIG = load_config File.join(File.dirname(__FILE__), '..', 'config', 'config.yml')
+check_arguments
+
+O = AgilezenPivotalMigrator.new
+#O.run
