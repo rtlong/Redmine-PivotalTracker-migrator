@@ -1,44 +1,105 @@
+# encoding: UTF-8
+
 class AgilezenPivotalMigrator
 
   def run
     az_stories.reverse.each do |a|
-      story = { story_type: 'feature' }
+      s = { story_type: 'feature' }
 
-      story[:name] = a.text.strip.gsub(/\*\*/, '*')
-      story[:name].gsub!(/^(#{CONFIG[:user_roles].join("|")})/, '*\1*') if CONFIG[:user_roles].presence
+      s[:name] = a.text.strip.gsub(/\*\*/, '*')
+      s[:name].gsub!(/^(#{CONFIG[:user_roles].join("|")})/, '*\1*') if CONFIG[:user_roles].presence
+
+      s[:name], extra_lines_from_name = s[:name].split("\n")
 
       if a[:size].presence
-        size = a[:size].is_a?(String) ? a[:size].split('+').first.to_f : a[:size]
-        story[:estimate] = round_to_powers_of_2(size)
+        if a[:size].is_a?(Integer)
+          size = a[:size]
+        else
+          case a[:size].strip
+          when /(?<hours>\d+)\s*hours?/i
+            size = $~[:hours].to_i / 8 # round down to 8-hour days
+          when /(?<days>\d+)\s*(?:days?)?/i
+            size = $~[:days].to_i
+          end
+        end
+
+        s[:estimate] = size.round_to_array(CONFIG[:tracker][:point_scale])
       end
 
-      story[:description] = a.details.presence ? a.details.strip : ''
-      story[:description] << "\n\n_Imported from AgileZen story ##{a.id}_"
+      desc = []
+      desc += [extra_lines_from_name, nil] if extra_lines_from_name
+      desc << a.details.strip if a.details.presence
+      desc += [nil] * 3 unless desc.blank?
+      desc += [
+        "*_Imported from AgileZen story ##{a.id}:_*",
+        "https://agilezen.com/project/27016/story/#{a.id}",
+        nil,
+        "_Originally added on #{a.metrics.createTime.to_time.strftime('%d %h %Y, %H:%M%P')}_"
+      ]
+      desc << "Assignee: #{a.owner.name} <#{a.owner.email}>" if a.owner
+      desc << "Was in the: *#{a.phase.name}* phase there"
+      desc << "Size: #{a[:size]}"
+      s[:description] = desc.join("\n")
 
-      story[:labels] = a.tags.collect(&:text)
+      s[:labels] = a.tags.collect(&:name)
 
-      s = tracker_project.stories.create( story )
+      s[:current_state] = (a.phase.name.match(/Backlog/i) or s[:estimate].nil?) ? 'unstarted' : 'started'
 
-      puts "[#{s.id}] #{s.name} #{s.estimate}"
+      s[:owned_by] = a.owner.name if a.owner.try(:name).try(:match, /Ryan|Maged/)
 
-      a.tasks.each do |t|
-        next if /^\[QA\]/i.match(t.text)
+      # p s
+      s = tracker_project.stories.create( s )
+      if s.id.nil?
+        puts "\n\nProblem saving this story!!"
+        puts s.errors.errors
+      else
 
-        s.tasks.create description: t.text.strip.gsub(/\s*\[[\d.\+]+\]$/, '')
+        puts "[#{a.id} => #{s.id}] #{s.name} (#{s.estimate < 0 ? 'unestimated' : s.estimate.to_s})"
 
-        puts "  - " << t.text
+        if a.tasks.any?
+          puts <<-EEE.strip_heredoc
+
+             Tasks:
+            ===============================
+          EEE
+
+          a.tasks.each do |t|
+            next if /^\[QA\]/i.match(t.text)
+
+            new_task = {
+              description: t.text.strip.gsub(/\s*\[[\d.\+]+\]$/, ''),
+              complete: t.status == 'complete'
+            }
+            s.tasks.create(new_task)
+
+            puts "  · #{t.text}"
+          end
+        end
+        if a.comments.any?
+          puts <<-EEE.strip_heredoc
+
+             Comments:
+            ===============================
+          EEE
+
+          a.comments.each do |c|
+            s.notes.create(
+              text: "*#{c.author.name}:* #{c.text}",
+              noted_at: c.createTime
+            )
+
+            puts <<-COMMENT.strip_heredoc
+              [#{c.createTime} : #{c.author.name}]: "#{c.text}"
+              ·.·.·.·.·.·.·.·.·.·.·.·.·.·.·.·.·.·.
+            COMMENT
+          end
+        end
+
       end
+      puts "\n%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%\n"
 
-      a.comments.each do |c|
-        c = s.notes.create text: "[import: #{c.author.name} said @ #{c.createTime}] #{c.text}"
-        puts c.text
-      end
-      puts "\n"
     end
-
   end
-
-
 
   def az_stories
     if @az_stories.nil?
@@ -56,12 +117,5 @@ class AgilezenPivotalMigrator
     return @tracker_project
   end
 
-  def round_to_powers_of_2(size)
-    r = 0
-    (0..3).each do |e|
-      r = 2**e if size >= 2**e
-    end
-    return r
-  end
 
 end

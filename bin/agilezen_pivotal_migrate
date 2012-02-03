@@ -1,4 +1,5 @@
 #!/usr/bin/env ruby
+# encoding: UTF-8
 
 begin
   # Require the preresolved locked set of gems.
@@ -17,7 +18,7 @@ require 'yaml'
 require 'active_support/all'
 require 'agilezen'
 require 'pivotal-tracker'
-
+require 'numeric'
 require 'agilezen_pivotal_migrator'
 
 def load_config(file)
@@ -51,4 +52,4 @@ CONFIG = load_config File.join(File.dirname(__FILE__), '..', 'config', 'config.y
 check_arguments
 
 O = AgilezenPivotalMigrator.new
-#O.run
+O.run
