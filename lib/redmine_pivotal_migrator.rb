@@ -47,7 +47,7 @@ class RedminePivotalMigrator
       end
       desc += [
         "*_Imported from eSpace's Redmine, story ##{redmine_story[:id]} at #{Time.now.strftime('%d %h %Y, %H:%M%P')}:_*",
-        "https://onlineredmine.espace-technologies.com/issues/show/#{redmine_story[:id]}",
+        [CONFIG[:redmine_issue_url],redmine_story[:id]].join('/'),
         nil,
         'What follows are the details from Redmine _as of import-time_, here for historical reasons, only:',
         nil,
