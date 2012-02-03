@@ -8,5 +8,3 @@ gem 'i18n'
 
 
 gem 'pivotal-tracker', path: "../pivotal-tracker-gem"
-gem 'agilezen'
-
